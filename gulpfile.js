@@ -109,9 +109,9 @@ gulp.task('getcoursedetails', function () {
       // Call the throttled request.
       throttledRequest(options, callback);
       
-      if (i === 1) {        
-        console.log(courseDetailsCollection.length);
-      }
+      callback.on('data', function() {
+        console.log(courseDetailsCollection.length);        
+      });
     }
   });
 });
