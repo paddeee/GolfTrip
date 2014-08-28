@@ -26,7 +26,89 @@ var del = require('del');
 var runSequence = require('run-sequence');
 var browserSync = require('browser-sync');
 var pagespeed = require('psi');
+var request = require('request');
+var rename = require('gulp-rename');
 var reload = browserSync.reload;
+var file = require('gulp-file');
+var xml2json = require('gulp-xml2json');
+var fs = require('fs');
+var RateLimiter = require('limiter').RateLimiter;
+var tap = require('gulp-tap');
+
+
+// Create Course List JSON file
+gulp.task('getcourselist', function () {  
+  var courselist = '';  
+  var options = {
+      url: 'http://protosgolf.com/golf/gateway',
+      headers: {
+        'P3P-Origin': 'AJAX',
+        'P3P-Request': 'CLUBSEARCH',
+        'Content-type': 'application/json; charset=utf-8'
+      },   
+      timeout: 60000,
+      method: 'POST',
+      form: {
+        clubregex: '',
+        city: 'Any'
+      }
+  };  
+  var callback = function(error, response, body) {    
+    // Handling UTF-* Replacement Character from dodgy data.
+    courselist = body.replace('\\\uFFFD', ' ');    
+    return file('courselist.json', courselist)
+      .pipe(gulp.dest('data'));
+  }  
+  request(options, callback);  
+});
+
+// Create Course Details JSON file
+gulp.task('getcoursedetails', function () {
+  
+  fs.readFile('data/courselist.json', 'utf8', function (err, data) {    
+  
+    var courses = JSON.parse(data);
+        
+    var options = {
+      url: 'http://protosgolf.com/golf/gateway',
+      headers: {
+        'P3P-Origin': 'XML_CLIENT',
+        'P3P-Request': 'CD'
+      },   
+      method: 'POST',
+      form: {
+        course_id: ''
+      }
+    };
+      
+    // Limit requests to prevent flooding server.
+    var limiter = new RateLimiter(1, 5000);
+      
+    var throttledRequest = function() {
+        var requestArgs = arguments;
+        limiter.removeTokens(1, function() {
+          request.apply(this, requestArgs);
+        });
+    };
+    
+    var callback = function(error, response, body) {
+      return file('coursedetails.xml', body)
+        .pipe(xml2json())
+        .pipe(tap(function(file, t) {
+          console.log(file);
+        }))
+        .pipe(gulp.dest('data'));    
+    };
+      
+    for (var i = 0; i < 1; i++) {
+      // Change the course id parameter for each request
+      options.form.course_id = courses.resultset[i].id;
+      
+      // Call the throttled request.
+      throttledRequest(options, callback);
+    }
+  });
+});
 
 // Lint JavaScript
 gulp.task('jshint', function () {
@@ -132,6 +214,11 @@ gulp.task('serve', function () {
 // Build Production Files, the Default Task
 gulp.task('default', ['clean'], function (cb) {
   runSequence('styles', ['jshint', 'html', 'images'], cb);
+});
+
+// Create golf course data from protos api
+gulp.task('getcoursedata', ['getcourselist'], function (cb) {
+  //runSequence('getcourselist', cb);
 });
 
 // Run PageSpeed Insights
