@@ -80,6 +80,8 @@ gulp.task('getcoursedetails', function () {
         course_id: ''
       }
     };
+    
+    var courseDetailsCollection =[];
       
     // Limit requests to prevent flooding server.
     var limiter = new RateLimiter(1, 5000);
@@ -95,17 +97,21 @@ gulp.task('getcoursedetails', function () {
       return file('coursedetails.xml', body)
         .pipe(xml2json())
         .pipe(tap(function(file, t) {
-          console.log(file);
+          courseDetailsCollection.push(String(file.contents));
         }))
-        .pipe(gulp.dest('data'));    
+        //.pipe(gulp.dest('data'));    
     };
       
-    for (var i = 0; i < 1; i++) {
+    for (var i = 0; i < 2; i++) {
       // Change the course id parameter for each request
       options.form.course_id = courses.resultset[i].id;
       
       // Call the throttled request.
       throttledRequest(options, callback);
+      
+      if (i === 1) {        
+        console.log(courseDetailsCollection.length);
+      }
     }
   });
 });
