@@ -34,11 +34,15 @@ var xml2json = require('gulp-xml2json');
 var fs = require('fs');
 var RateLimiter = require('limiter').RateLimiter;
 var tap = require('gulp-tap');
+var eventEmitter = require('events').EventEmitter;
+var jsonlint = require("gulp-jsonlint");
 
 
 // Create Course List JSON file
-gulp.task('getcourselist', function () {  
-  var courselist = '';  
+gulp.task('getcourselist', function () {
+  
+  var courselist = '';
+  
   var options = {
       url: 'http://protosgolf.com/golf/gateway',
       headers: {
@@ -52,14 +56,20 @@ gulp.task('getcourselist', function () {
         clubregex: '',
         city: 'Any'
       }
-  };  
-  var callback = function(error, response, body) {    
-    // Handling UTF-* Replacement Character from dodgy data.
-    courselist = body.replace('\\\uFFFD', ' ');    
+  };
+  
+  var createCourseListFile = function(error, response, body) {
+    
+    // Handling UTF-* Replacement Character from dodgy data
+    courselist = body.replace('\\\uFFFD', ' ');
+    
+    // Create JSON file of all courses
     return file('courselist.json', courselist)
       .pipe(gulp.dest('data'));
-  }  
-  request(options, callback);  
+  }
+  
+  // Make the request to the JSON API endpoint for all courses
+  request(options, createCourseListFile);  
 });
 
 // Create Course Details JSON file
@@ -73,19 +83,41 @@ gulp.task('getcoursedetails', function () {
       url: 'http://protosgolf.com/golf/gateway',
       headers: {
         'P3P-Origin': 'XML_CLIENT',
-        'P3P-Request': 'CD'
+        'P3P-Request': 'CL'
       },   
       method: 'POST',
       form: {
-        course_id: ''
+        regex: ''
       }
     };
     
+    // Array to temporarily store all course details objects
     var courseDetailsCollection =[];
+    
+    // Array to temporarily store all course id objects
+    var courseIdCollection =[];
+    
+    // Set up events emitter
+    var emitter = new eventEmitter;
       
-    // Limit requests to prevent flooding server.
+    // Limit requests to prevent flooding server
     var limiter = new RateLimiter(1, 5000);
+    
+    // Counter so we know when the last course has been added to Collection
+    var coursesAdded = 0;
+     
+    // When Courses are all in the collection run the task to write the file     
+    emitter.on('CourseParsed', function () {
+      coursesAdded++;
       
+      // If all courses have been added we can write the file.
+      if (coursesAdded === i) {
+        
+        console.log(courseIdCollection);
+      }
+    });
+      
+    // Request course details data from API
     var throttledRequest = function() {
         var requestArgs = arguments;
         limiter.removeTokens(1, function() {
@@ -93,25 +125,59 @@ gulp.task('getcoursedetails', function () {
         });
     };
     
-    var callback = function(error, response, body) {
-      return file('coursedetails.xml', body)
-        .pipe(xml2json())
-        .pipe(tap(function(file, t) {
-          courseDetailsCollection.push(String(file.contents));
-        }))
-        //.pipe(gulp.dest('data'));    
-    };
+    // Callback when a response is returned from Course List API
+    var courseListCallback = function(error, response, body) {
       
-    for (var i = 0; i < 2; i++) {
+      if (response.statusCode >= 500) {        
+        return;        
+      }
+      
+      file('course.xml', body)
+      .pipe(xml2json())      
+      .pipe(tap(function(file, t) {
+        
+        // Push course JSON to temporary array
+        courseIdCollection.push(String(file.contents));
+        
+        // Emit 'CourseParsed' event
+        emitter.emit('CourseParsed');
+      }));   
+    }; 
+    
+    // Callback when a response is returned from API
+    /*var courseDetailCallback = function(error, response, body) {
+      
+      if (response.statusCode >= 500) {
+                console.log('500');
+        // Emit 'CourseParsed' event
+        emitter.emit('CourseParsed');
+        
+        return;        
+      }
+      
+      file('coursedetails.xml', body)
+      .pipe(xml2json())      
+      .pipe(jsonlint())
+      .pipe(jsonlint.reporter())
+      .pipe(tap(function(file, t) {
+        
+        // Push course JSON to temporary array
+        courseDetailsCollection.push(String(file.contents));
+        
+        // Emit 'CourseParsed' event
+        emitter.emit('CourseParsed');
+      }));   
+    };*/
+      
+    // For each entry in the course list JSON file make a request
+    // to the XML service using the name as the regex
+    for (var i = 0; i < 3; i++) {
+      
       // Change the course id parameter for each request
-      options.form.course_id = courses.resultset[i].id;
+      options.form.regex = courses.resultset[i].name;
       
       // Call the throttled request.
-      throttledRequest(options, callback);
-      
-      callback.on('data', function() {
-        console.log(courseDetailsCollection.length);        
-      });
+      throttledRequest(options, courseListCallback);
     }
   });
 });
