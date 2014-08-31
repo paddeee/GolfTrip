@@ -32,10 +32,9 @@ var reload = browserSync.reload;
 var file = require('gulp-file');
 var xml2json = require('gulp-xml2json');
 var fs = require('fs');
-var RateLimiter = require('limiter').RateLimiter;
 var tap = require('gulp-tap');
-var eventEmitter = require('events').EventEmitter;
 var jsonlint = require("gulp-jsonlint");
+var async = require('async');
 
 
 // Create Course List JSON file
@@ -72,112 +71,114 @@ gulp.task('getcourselist', function () {
   request(options, createCourseListFile);  
 });
 
-// Create Course Details JSON file
-gulp.task('getcoursedetails', function () {
+// Create Course IDs JSON file
+gulp.task('getcourseids', function () {
   
   fs.readFile('data/courselist.json', 'utf8', function (err, data) {    
   
     var courses = JSON.parse(data);
-        
-    var options = {
-      url: 'http://protosgolf.com/golf/gateway',
-      headers: {
-        'P3P-Origin': 'XML_CLIENT',
-        'P3P-Request': 'CL'
-      },   
-      method: 'POST',
-      form: {
-        regex: ''
-      }
-    };
-    
-    // Array to temporarily store all course details objects
-    var courseDetailsCollection =[];
     
     // Array to temporarily store all course id objects
     var courseIdCollection =[];
     
-    // Set up events emitter
-    var emitter = new eventEmitter;
+    // Use async to limit requests to just one concurrent worker. This should avoid
+    // slamming the API server.
+    var q = async.queue(function (task, done) {
+      request(task, function(error, response, body) {
       
-    // Limit requests to prevent flooding server
-    var limiter = new RateLimiter(1, 5000);
+        if (error) return done(error);
+        if (response.statusCode != 200) return done(response.statusCode);
+        
+        file('course.xml', body)
+        .pipe(xml2json())      
+        .pipe(tap(function(file, t) {        
+          // Push course JSON to temporary array
+          courseIdCollection.push(JSON.parse(String(file.contents)));        
+          done();
+        }));   
+      });
+    }, 1);    
     
-    // Counter so we know when the last course has been added to Collection
-    var coursesAdded = 0;
-     
-    // When Courses are all in the collection run the task to write the file     
-    emitter.on('CourseParsed', function () {
-      coursesAdded++;
+    // When all requests are complete we can write the file.
+    q.drain = function() {      
+      return file('courseids.json', JSON.stringify(courseIdCollection))
+        .pipe(gulp.dest('data'));
+    }
+    console.log(new RegExp(courses.resultset[5].name));
+    // For every object in the JSON file add to the request queue.
+    for (var i = 5; i < 6; i++) {
       
-      // If all courses have been added we can write the file.
-      if (coursesAdded === i) {
-        
-        console.log(courseIdCollection);
-      }
-    });
+      // Create new object each time otherwise the regex property gets updated too quickly
+      // for the async taskas it is by reference.
+      var options = {
+        url: 'http://protosgolf.com/golf/gateway',
+        headers: {
+          'P3P-Origin': 'XML_CLIENT',
+          'P3P-Request': 'CL'
+        },   
+        method: 'POST',
+        form: {
+          regex: new RegExp(courses.resultset[i].name)
+        }
+      };
       
-    // Request course details data from API
-    var throttledRequest = function() {
-        var requestArgs = arguments;
-        limiter.removeTokens(1, function() {
-          request.apply(this, requestArgs);
-        });
-    };
+      // Push options object onto async queue
+      q.push(options);
+    }
+  });
+});// Create Course Details JSON file
+gulp.task('getcoursedetails', function () {
+  
+  fs.readFile('data/courseids.json', 'utf8', function (err, data) {
     
-    // Callback when a response is returned from Course List API
-    var courseListCallback = function(error, response, body) {
-      
-      if (response.statusCode >= 500) {        
-        return;        
-      }
-      
-      file('course.xml', body)
-      .pipe(xml2json())      
-      .pipe(tap(function(file, t) {
-        
-        // Push course JSON to temporary array
-        courseIdCollection.push(String(file.contents));
-        
-        // Emit 'CourseParsed' event
-        emitter.emit('CourseParsed');
-      }));   
-    }; 
+    var courses = JSON.parse(data);
     
-    // Callback when a response is returned from API
-    /*var courseDetailCallback = function(error, response, body) {
+    // Array to temporarily store all course details objects
+    var courseDetailsCollection =[];
+    
+    // Use async to limit requests to just one concurrent worker. This should avoid
+    // slamming the API server.
+    var q = async.queue(function (task, done) {
+      request(task, function(error, response, body) {
       
-      if (response.statusCode >= 500) {
-                console.log('500');
-        // Emit 'CourseParsed' event
-        emitter.emit('CourseParsed');
+        if (error) return done(error);
+        if (response.statusCode != 200) return done(response.statusCode);
         
-        return;        
-      }
+        file('coursedetails.xml', body)
+        .pipe(xml2json())      
+        .pipe(tap(function(file, t) {        
+          // Push course JSON to temporary array
+          courseDetailsCollection.push(String(file.contents));        
+          done();
+        }));   
+      });
+    }, 1);    
+    
+    // When all requests are complete we can write the file.
+    q.drain = function() {      
+      return file('coursedetails.json', JSON.stringify(courseDetailsCollection))
+        .pipe(gulp.dest('data'));
+    }
+    
+    // For every object in the JSON file add to the request queue.
+    for (var i = 5; i < 6; i++) {
       
-      file('coursedetails.xml', body)
-      .pipe(xml2json())      
-      .pipe(jsonlint())
-      .pipe(jsonlint.reporter())
-      .pipe(tap(function(file, t) {
-        
-        // Push course JSON to temporary array
-        courseDetailsCollection.push(String(file.contents));
-        
-        // Emit 'CourseParsed' event
-        emitter.emit('CourseParsed');
-      }));   
-    };*/
+      // Create new object each time otherwise the regex property gets updated too quickly
+      // for the async taskas it is by reference.
+      var options = {
+        url: 'http://protosgolf.com/golf/gateway',
+        headers: {
+          'P3P-Origin': 'XML_CLIENT',
+          'P3P-Request': 'CD'
+        },   
+        method: 'POST',
+        form: {
+          course_id: courses[i].items.item[0].id[0]
+        }
+      };
       
-    // For each entry in the course list JSON file make a request
-    // to the XML service using the name as the regex
-    for (var i = 0; i < 3; i++) {
-      
-      // Change the course id parameter for each request
-      options.form.regex = courses.resultset[i].name;
-      
-      // Call the throttled request.
-      throttledRequest(options, courseListCallback);
+      // Push options object onto async queue
+      q.push(options);
     }
   });
 });
