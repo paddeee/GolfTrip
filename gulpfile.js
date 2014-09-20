@@ -16,6 +16,7 @@ var fs = require('fs');
 var tap = require('gulp-tap');
 var jsonlint = require("gulp-jsonlint");
 var async = require('async');
+var _ = require('lodash');
 
 
 // Create Course List JSON file
@@ -71,31 +72,20 @@ gulp.task('getcourseids', function () {
         var courses = JSON.parse(data);
         var parsedCourseName;
 
-        // Array to temporarily store all club id objects
-        var clubIdCollection =[];
-
-        // Create object containing club id and array of course ids
-        createClubObject = function (clubId, courseIdArray) {
-            return {
-                clubId: clubId,
-                courseIds: courseIdArray
-            }
-        };
-
+        // Array to temporarily store all course ids
+        var courseIdCollection =[];
+        
         // Use async to limit requests to just one concurrent worker. This should avoid
         // slamming the API server.
         var q = async.queue(function (task, done) {
             request(task, function(error, response, body) {
 
                 if (error) return done(error);
-                if (response.statusCode != 200) return done(response.statusCode);
+                if (response.statusCode != 200) return done(response.statusCode); 
 
                 file('course.xml', body)
                     .pipe(xml2json())
                     .pipe(tap(function(file, t) {
-
-                        // Array to temporarily store all course ids
-                        var courseIdCollection =[];
 
                         // If file hasn't come back empty of items
                         if (JSON.parse(String(file.contents)).items != '') {
@@ -104,24 +94,27 @@ gulp.task('getcourseids', function () {
                             for (var i = 0; i < JSON.parse(String(file.contents)).items.item.length; i++) {
                                 courseIdCollection.push(JSON.parse(String(file.contents)).items.item[i].id[0]);
                             }
-
-                            // Push club object to clubIdCollection array
-                            clubIdCollection.push(createClubObject(task.clubId, courseIdCollection));
-                        }
-                        done();
+                       }
+                       setTimeout(function() {
+                          done();
+                       }, 1000);
                     }));
             });
         }, 1);
 
         // When all requests are complete we can write the file.
-        q.drain = function() {console.log(clubIdCollection.length);
-            return file('courseids.json', JSON.stringify(clubIdCollection))
+        q.drain = function() {
+          
+            // Remove duplicate entries
+            courseIdCollection = _.uniq(courseIdCollection);
+            
+            return file('courseids.json', JSON.stringify(courseIdCollection))
                 .pipe(gulp.dest('data'));
         }
 
         // For every object in the JSON file add to the request queue.
-        for (var i = 0; i < 30; i++) {
-
+        for (var i = 0; i < courses.resultset.length; i++) {
+        
             // Parse course name so it's more likely to return a match.
             parsedCourseName = parseCourseName(courses.resultset[i].name);
 
@@ -163,13 +156,19 @@ gulp.task('getcoursedetails', function () {
 
                 if (error) return done(error);
                 if (response.statusCode != 200) return done(response.statusCode);
+                
+                // Replace non entities & with &amp; for valid XML                
+                body = body.replace(/(\s&\s)/g, " &amp; ");
 
                 file('coursedetails.xml', body)
                     .pipe(xml2json())
                     .pipe(tap(function(file, t) {
                         // Push course JSON to temporary array
                         courseDetailsCollection.push(String(file.contents));
-                        done();
+                        
+                       setTimeout(function() {
+                          done();
+                       }, 1000);
                     }));
             });
         }, 1);
@@ -179,10 +178,12 @@ gulp.task('getcoursedetails', function () {
             return file('coursedetails.json', JSON.stringify(courseDetailsCollection))
                 .pipe(gulp.dest('data'));
         }
-
+        
         // For every object in the JSON file add to the request queue.
-        for (var i = 5; i < 6; i++) {
-
+        //for (var i = 100; i < courses.length; i++) {
+        
+        for (var i = 200; i < 400; i++) {
+                        
             // Create new object each time otherwise the regex property gets updated too quickly
             // for the async taskas it is by reference.
             var options = {
@@ -193,8 +194,9 @@ gulp.task('getcoursedetails', function () {
                 },
                 method: 'POST',
                 form: {
-                    course_id: courses[i].items.item[0].id[0]
-                }
+                    course_id: courses[i]
+                },
+                courseId: courses[i]
             };
 
             // Push options object onto async queue
