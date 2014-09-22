@@ -168,7 +168,7 @@ gulp.task('getcoursedetails', function () {
                         
                        setTimeout(function() {
                           done();
-                       }, 1000);
+                       }, 500);
                     }));
             });
         }, 1);
@@ -180,10 +180,8 @@ gulp.task('getcoursedetails', function () {
         }
         
         // For every object in the JSON file add to the request queue.
-        //for (var i = 100; i < courses.length; i++) {
-        
-        for (var i = 200; i < 400; i++) {
-                        
+        for (var i = 0; i < courses.length; i++) {
+                                
             // Create new object each time otherwise the regex property gets updated too quickly
             // for the async taskas it is by reference.
             var options = {
@@ -195,8 +193,7 @@ gulp.task('getcoursedetails', function () {
                 method: 'POST',
                 form: {
                     course_id: courses[i]
-                },
-                courseId: courses[i]
+                }
             };
 
             // Push options object onto async queue
