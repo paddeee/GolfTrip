@@ -215,6 +215,25 @@ gulp.task('getcoursedetails', function () {
     });
 });
 
+// Create FirebaseClubList JSON file from coursedetails.json
+gulp.task('createfirebaseclublist', function () {
+
+  fs.readFile('data/clubdetailstemp.json', 'utf8', function (err, data) {
+
+    var clubs = JSON.parse(data);
+    var club;
+    var newClubObject = {};
+
+    _.forEach(clubs, function(club) {
+      club = JSON.parse(club);
+      console.log(club.coursedetails);
+    });
+
+  });
+
+});
+
+
 // Lint JavaScript
 gulp.task('jshint', function () {
     return gulp.src('app/scripts/**/*.js')
