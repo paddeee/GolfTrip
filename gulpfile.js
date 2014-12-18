@@ -74,14 +74,14 @@ gulp.task('getcourseids', function () {
 
         // Array to temporarily store all course ids
         var courseIdCollection =[];
-        
+
         // Use async to limit requests to just one concurrent worker. This should avoid
         // slamming the API server.
         var q = async.queue(function (task, done) {
             request(task, function(error, response, body) {
 
                 if (error) return done(error);
-                if (response.statusCode != 200) return done(response.statusCode); 
+                if (response.statusCode != 200) return done(response.statusCode);
 
                 file('course.xml', body)
                     .pipe(xml2json())
@@ -104,17 +104,17 @@ gulp.task('getcourseids', function () {
 
         // When all requests are complete we can write the file.
         q.drain = function() {
-          
+
             // Remove duplicate entries
             courseIdCollection = _.uniq(courseIdCollection);
-            
+
             return file('courseids.json', JSON.stringify(courseIdCollection))
                 .pipe(gulp.dest('data'));
         }
 
         // For every object in the JSON file add to the request queue.
         for (var i = 0; i < courses.resultset.length; i++) {
-        
+
             // Parse course name so it's more likely to return a match.
             parsedCourseName = parseCourseName(courses.resultset[i].name);
 
@@ -156,19 +156,31 @@ gulp.task('getcoursedetails', function () {
 
                 if (error) return done(error);
                 if (response.statusCode != 200) return done(response.statusCode);
-                
-                // Replace non entities & with &amp; for valid XML                
+
+                // Replace non entities & with &amp; for valid XML
                 body = body.replace(/(\s&\s)/g, " &amp; ");
 
-                file('coursedetails.xml', body)
+              if (task.i == 100) {
+                console.log('100');
+              } else if (task.i === 1000) {
+                console.log('1000');
+              } else if (task.i === 5000) {
+                console.log('5000');
+              } else if (task.i === 15000) {
+                console.log('15000');
+              } else if (task.i === courses.length - 1) {
+                console.log('LAST ONE');
+              }
+
+              file('coursedetails.xml', body)
                     .pipe(xml2json())
                     .pipe(tap(function(file, t) {
                         // Push course JSON to temporary array
                         courseDetailsCollection.push(String(file.contents));
-                        
+
                        setTimeout(function() {
                           done();
-                       }, 500);
+                       }, 200);
                     }));
             });
         }, 1);
@@ -178,10 +190,10 @@ gulp.task('getcoursedetails', function () {
             return file('coursedetails.json', JSON.stringify(courseDetailsCollection))
                 .pipe(gulp.dest('data'));
         }
-        
+
         // For every object in the JSON file add to the request queue.
         for (var i = 0; i < courses.length; i++) {
-                                
+
             // Create new object each time otherwise the regex property gets updated too quickly
             // for the async taskas it is by reference.
             var options = {
@@ -193,10 +205,11 @@ gulp.task('getcoursedetails', function () {
                 method: 'POST',
                 form: {
                     course_id: courses[i]
-                }
+                },
+                i: i
             };
 
-            // Push options object onto async queue
+          // Push options object onto async queue
             q.push(options);
         }
     });
