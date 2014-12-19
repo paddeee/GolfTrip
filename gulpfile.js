@@ -221,13 +221,41 @@ gulp.task('createfirebaseclublist', function () {
   fs.readFile('data/clubdetailstemp.json', 'utf8', function (err, data) {
 
     var clubs = JSON.parse(data);
-    var club;
-    var newClubObject = {};
+    var newClubList = [];
 
-    _.forEach(clubs, function(club) {
-      club = JSON.parse(club);
-      console.log(club.coursedetails);
+    _.forEach(clubs, function(clubdata) {
+
+      var newClub = {};
+      var courseDetails;
+      var club;
+      var id;
+      var name;
+      var address;
+      var course;
+
+      courseDetails = JSON.parse(clubdata).coursedetails;
+      club = courseDetails.club[0];
+      id = club.$.id;
+      name = club.name[0];
+      address = club.address[0];
+      course = courseDetails.course[0];
+
+      // Build new club object
+      newClub['clubid:' + id] = {};
+      newClub['clubid:' + id].id = id;
+      newClub['clubid:' + id].name = name;
+      newClub['clubid:' + id].address = createValidAddressObject(address);
+
+      console.log(course);
     });
+
+    function createValidAddressObject(addressObject) {
+      addressObject.street = addressObject.street[0];
+      addressObject.city = addressObject.city[0];
+      addressObject.country = addressObject.country[0];
+
+      return addressObject;
+    };
 
   });
 
