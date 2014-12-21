@@ -160,28 +160,16 @@ gulp.task('getcoursedetails', function () {
                 // Replace non entities & with &amp; for valid XML
                 body = body.replace(/(\s&\s)/g, " &amp; ");
 
-              if (task.i == 100) {
-                console.log('100');
-              } else if (task.i === 1000) {
-                console.log('1000');
-              } else if (task.i === 5000) {
-                console.log('5000');
-              } else if (task.i === 15000) {
-                console.log('15000');
-              } else if (task.i === courses.length - 1) {
-                console.log('LAST ONE');
-              }
-
               file('coursedetails.xml', body)
-                    .pipe(xml2json())
-                    .pipe(tap(function(file, t) {
-                        // Push course JSON to temporary array
-                        courseDetailsCollection.push(String(file.contents));
+                .pipe(xml2json())
+                .pipe(tap(function(file, t) {
+                    // Push course JSON to temporary array
+                    courseDetailsCollection.push(String(file.contents));
 
-                       setTimeout(function() {
-                          done();
-                       }, 200);
-                    }));
+                   setTimeout(function() {
+                      done();
+                   }, 200);
+                }));
             });
         }, 1);
 
@@ -222,6 +210,8 @@ gulp.task('createfirebaseclublist', function () {
 
     var clubs = JSON.parse(data);
     var newClubList = [];
+    var tempClubList = [];
+    var MultipleCourseIdList;
 
     _.forEach(clubs, function(clubdata) {
 
@@ -245,9 +235,91 @@ gulp.task('createfirebaseclublist', function () {
       newClub['clubid:' + id].id = id;
       newClub['clubid:' + id].name = name;
       newClub['clubid:' + id].address = createValidAddressObject(address);
+      newClub['clubid:' + id].courses = [];
 
-      console.log(course);
+      // Build new course object
+      var newCourse = {};
+      var greenCentre = course.greencenter[0];
+      var teeBoxes = course.teeboxes[0].teebox;
+
+      newCourse.id = course.$.id;
+      newCourse.name = course.name[0];
+      newCourse.map = course.map[0];
+      newCourse.length = course.length[0];
+      newCourse.par = course.par[0].split(',');
+      newCourse.stroke = course.handicap[0].split(',');
+      newCourse.greencentre = createGreenCentreObject(greenCentre);
+      newCourse.teeboxes = createTeeBoxesArray(teeBoxes);
+
+      // Add course to the courses array property
+      newClub['clubid:' + id].courses.push(newCourse);
+
+      // Add club to the tempClubList array. Creates club objects without ids in the keys to make manipulating easier
+      tempClubList.push(newClub['clubid:' + id]);
+
+      // Add club to the newClubList array
+      newClubList.push(newClub);
+
     });
+
+    // Get array of clubs with multiple courses
+    MultipleCourseIdList = getClubsWitMultipleCourses(tempClubList);
+
+    // For each club with multiple courses, create a club object of multiple courses.
+    // Remove current club objects with the id from the array, then add the new merged one.
+    _.forEach(MultipleCourseIdList, function(clubId) {
+
+      var duplicatesArray = _.filter(newClubList, function(club) {
+        return club['clubid:' + clubId];
+      });
+
+      mergeClubData(newClubList, clubId, createSingleClubObject(duplicatesArray, clubId));
+    });
+
+    // Write the data to the file
+
+    writeClubDataFile(newClubList);
+
+    function writeClubDataFile(newClubList) {
+
+      return file('firebaseclubdetails.json', JSON.stringify(newClubList))
+        .pipe(gulp.dest('data'));
+    }
+
+    function createSingleClubObject(duplicatesArray, clubId) {
+
+      var clubObject = duplicatesArray[0];
+      var objectsToRemoveArray;
+      var courses = clubObject['clubid:' + clubId].courses;
+
+      // Remove first Object from Array as we'll use this to add courses too
+      objectsToRemoveArray = duplicatesArray.slice(1, duplicatesArray.length);
+
+      // For each object being removed get courses data and push it onto courses array
+      _.forEach(objectsToRemoveArray, function(club) {
+          courses.push(club['clubid:' + clubId].courses);
+      });
+
+      return clubObject;
+    }
+
+    function getClubsWitMultipleCourses(newClubList) {
+
+      return _.keys(_.omit(_.countBy(newClubList, function(club) {
+        return club.id;
+      }), function(clubId) {
+        return clubId === 1;
+      }));
+    }
+
+    function mergeClubData(newClubList, clubId, mergedClubObject) {
+
+      _.remove(newClubList, function(club) {
+          return club['clubid:' + clubId];
+      });
+
+      newClubList.push(mergedClubObject);
+    }
 
     function createValidAddressObject(addressObject) {
       addressObject.street = addressObject.street[0];
@@ -255,6 +327,44 @@ gulp.task('createfirebaseclublist', function () {
       addressObject.country = addressObject.country[0];
 
       return addressObject;
+    }
+
+    function createGreenCentreObject(greenCentreObject) {
+
+      greenCentreObject.coords = greenCentreObject._.split(',');
+      greenCentreObject.units = greenCentreObject.$.units;
+      delete greenCentreObject._;
+      delete greenCentreObject.$;
+
+      return greenCentreObject;
+    }
+
+    function createTeeBoxesArray(teeBoxArray) {
+
+      var newTeeBoxArray = [];
+
+      _.forEach(teeBoxArray, function(teeBox) {
+
+        teeBox.name = teeBox.name[0];
+        teeBox.designation = teeBox.designation[0];
+        teeBox.slope = teeBox.slope[0];
+        teeBox.rating = teeBox.rating[0];
+        teeBox.distance = createDistanceObject(teeBox.distance[0]);
+
+        newTeeBoxArray.push(teeBox);
+      });
+
+      return newTeeBoxArray;
+    }
+
+    function createDistanceObject(distanceObject) {
+
+      distanceObject.length = distanceObject._.split(',');
+      distanceObject.units = distanceObject.$.units;
+      delete distanceObject._;
+      delete distanceObject.$;
+
+      return distanceObject;
     };
 
   });
