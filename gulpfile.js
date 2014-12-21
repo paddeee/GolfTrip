@@ -17,7 +17,7 @@ var tap = require('gulp-tap');
 var jsonlint = require("gulp-jsonlint");
 var async = require('async');
 var _ = require('lodash');
-
+var Firebase = require('firebase');
 
 // Create Course List JSON file
 gulp.task('getcourselist', function () {
@@ -206,7 +206,7 @@ gulp.task('getcoursedetails', function () {
 // Create FirebaseClubList JSON file from coursedetails.json
 gulp.task('createfirebaseclublist', function () {
 
-  fs.readFile('data/clubdetailstemp.json', 'utf8', function (err, data) {
+  fs.readFile('data/coursedetails.json', 'utf8', function (err, data) {
 
     var clubs = JSON.parse(data);
     var newClubList = [];
@@ -277,13 +277,17 @@ gulp.task('createfirebaseclublist', function () {
     });
 
     // Write the data to the file
+    saveClubDetailsToFireBase(newClubList);
 
-    writeClubDataFile(newClubList);
+    function saveClubDetailsToFireBase(newClubList) {
 
-    function writeClubDataFile(newClubList) {
+      var clubDetailsFireBase;
 
-      return file('firebaseclubdetails.json', JSON.stringify(newClubList))
-        .pipe(gulp.dest('data'));
+      _.forEach(newClubList, function(clubDetails) {
+
+        clubDetailsFireBase = new Firebase('https://incandescent-heat-3687.firebaseio.com/clubdetails/' + Object.keys(clubDetails)[0]);
+        clubDetailsFireBase.set(clubDetails[Object.keys(clubDetails)[0]]);
+      });
     }
 
     function createSingleClubObject(duplicatesArray, clubId) {
