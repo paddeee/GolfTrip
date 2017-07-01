@@ -139,7 +139,7 @@ gulp.task('getcourseids', function () {
     });
 });
 
-// Create Course Details JSON file
+// Create Club Details JSON file
 gulp.task('getcoursedetails', function () {
 
     fs.readFile('data/courseids.json', 'utf8', function (err, data) {
@@ -203,8 +203,46 @@ gulp.task('getcoursedetails', function () {
     });
 });
 
-// Create FirebaseClubList JSON file from coursedetails.json
+// Set Firebase Club list from coursedetails.json
 gulp.task('createfirebaseclublist', function () {
+
+  fs.readFile('data/courselist.json', 'utf8', function (err, data) {
+
+    var clubs = JSON.parse(data).resultset;
+    var clubList = [];
+
+    _.forEach(clubs, function (clubData) {
+
+      var newClub = {};
+      var id;
+
+      // Build new club object
+      id = clubData.id;
+      newClub['clubid:' + id] = {};
+      newClub['clubid:' + id] = clubData;
+
+      clubList.push(newClub);
+    });
+
+    // Write the data to the file
+    saveClubListToFireBase(clubList);
+
+    function saveClubListToFireBase(clubList) {
+
+      var clubListFireBase;
+
+      _.forEach(clubList, function(clubInfo) {
+
+        clubListFireBase = new Firebase('https://incandescent-heat-3687.firebaseio.com/clublist/' + Object.keys(clubInfo)[0]);
+        clubListFireBase.set(clubInfo[Object.keys(clubInfo)[0]]);
+      });
+    }
+
+  });
+});
+
+// Set Firebase coursedetails from coursedetails.json
+gulp.task('createfirebaseclubdetails', function () {
 
   fs.readFile('data/coursedetails.json', 'utf8', function (err, data) {
 
@@ -301,7 +339,10 @@ gulp.task('createfirebaseclublist', function () {
 
       // For each object being removed get courses data and push it onto courses array
       _.forEach(objectsToRemoveArray, function(club) {
-          courses.push(club['clubid:' + clubId].courses);
+        _.forEach(club['clubid:' + clubId].courses, function(course) {
+
+          courses.push(course);
+        });
       });
 
       return clubObject;
@@ -372,7 +413,6 @@ gulp.task('createfirebaseclublist', function () {
     };
 
   });
-
 });
 
 
