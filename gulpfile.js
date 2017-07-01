@@ -8,16 +8,27 @@ var runSequence = require('run-sequence');
 var browserSync = require('browser-sync');
 var pagespeed = require('psi');
 var request = require('request');
-var rename = require('gulp-rename');
 var reload = browserSync.reload;
 var file = require('gulp-file');
 var xml2json = require('gulp-xml2json');
 var fs = require('fs');
 var tap = require('gulp-tap');
-var jsonlint = require("gulp-jsonlint");
 var async = require('async');
 var _ = require('lodash');
-var Firebase = require('firebase');
+var firebase = require('firebase');
+
+// Return European clubs based off geo-coordinates
+var getWestEuropeanClubs = function(clubData) {
+
+  var lat = clubData.latitude;
+  var long = clubData.longitude;
+
+  if (lat > 36 && lat < 59 && long > -11 && long < 3) {
+    return true;
+  }
+
+  return false;
+}
 
 // Create Course List JSON file
 gulp.task('getcourselist', function () {
@@ -221,7 +232,10 @@ gulp.task('createfirebaseclublist', function () {
       newClub['clubid:' + id] = {};
       newClub['clubid:' + id] = clubData;
 
-      clubList.push(newClub);
+      if (getWestEuropeanClubs(clubData)) {
+        clubList.push(newClub);
+      }
+
     });
 
     // Write the data to the file
@@ -229,12 +243,21 @@ gulp.task('createfirebaseclublist', function () {
 
     function saveClubListToFireBase(clubList) {
 
-      var clubListFireBase;
+      var config = {
+        apiKey: "AIzaSyCtyzUWtbcPhcMrBoBBUZ4Fsn0guTUuyDI",
+        authDomain: "incandescent-heat-3687.firebaseapp.com",
+        databaseURL: "https://incandescent-heat-3687.firebaseio.com",
+        projectId: "incandescent-heat-3687",
+        storageBucket: "incandescent-heat-3687.appspot.com",
+        messagingSenderId: "602114181418"
+      };
+
+      firebase.initializeApp(config);
 
       _.forEach(clubList, function(clubInfo) {
 
-        clubListFireBase = new Firebase('https://incandescent-heat-3687.firebaseio.com/clublist/' + Object.keys(clubInfo)[0]);
-        clubListFireBase.set(clubInfo[Object.keys(clubInfo)[0]]);
+        firebase.database().ref('clublist/' + Object.keys(clubInfo)[0]).set(clubInfo[Object.keys(clubInfo)[0]]);
+
       });
     }
 
